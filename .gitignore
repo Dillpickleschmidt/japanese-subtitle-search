@@ -1,1 +1,5 @@
 /target
+/data/transcripts_raw
+/data/transcripts_json
+/.vscode
+/transcripts.db
