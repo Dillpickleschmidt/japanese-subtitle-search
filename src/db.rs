@@ -20,29 +20,31 @@ impl DbHandler {
     // Uses the execute method to run SQL statements
     pub fn create_tables(&self) -> Result<()> {
         let sql = r"
-            CREATE TABLE IF NOT EXISTS shows (
-                id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                show_type TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS episodes (
-                id INTEGER PRIMARY KEY,
-                show_id INTEGER,
-                name TEXT NOT NULL,
-                season INTEGER,
-                episode_number INTEGER,
-                FOREIGN KEY(show_id) REFERENCES shows(id)
-            );
-            CREATE TABLE IF NOT EXISTS transcripts (
-                id INTEGER PRIMARY KEY,
-                episode_id INTEGER,
-                line_id INTEGER,
-                time_start TEXT,
-                time_end TEXT,
-                text TEXT NOT NULL,
-                FOREIGN KEY(episode_id) REFERENCES episodes(id)
-            );
-        ";
+        CREATE TABLE IF NOT EXISTS shows (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            show_type TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS episodes (
+            id INTEGER PRIMARY KEY,
+            show_id INTEGER,
+            name TEXT NOT NULL,
+            season INTEGER,
+            episode_number INTEGER,
+            UNIQUE(show_id, season, episode_number),
+            FOREIGN KEY(show_id) REFERENCES shows(id)
+        );
+        CREATE TABLE IF NOT EXISTS transcripts (
+            id INTEGER PRIMARY KEY,
+            episode_id INTEGER,
+            line_id INTEGER,
+            time_start TEXT,
+            time_end TEXT,
+            text TEXT NOT NULL,
+            UNIQUE(episode_id, time_start, time_end),
+            FOREIGN KEY(episode_id) REFERENCES episodes(id)
+        );
+    ";
 
         let mut batch = Batch::new(&self.conn, sql);
         while let Some(mut stmt) = batch.next()? {
@@ -56,7 +58,7 @@ impl DbHandler {
     // params! is a macro that helps prevent SQL injection
     pub fn insert_show(&self, name: &str, show_type: &str) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO shows (name, show_type) VALUES (?1, ?2)",
+            "INSERT OR IGNORE INTO shows (name, show_type) VALUES (?1, ?2)",
             params![name, show_type],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -71,9 +73,9 @@ impl DbHandler {
         episode_number: i32,
     ) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO episodes (show_id, name, season, episode_number) VALUES (?1, ?2, ?3, ?4)",
-            params![show_id, name, season, episode_number],
-        )?;
+        "INSERT OR IGNORE INTO episodes (show_id, name, season, episode_number) VALUES (?1, ?2, ?3, ?4)",
+        params![show_id, name, season, episode_number],
+    )?;
         Ok(self.conn.last_insert_rowid())
     }
 
@@ -81,21 +83,21 @@ impl DbHandler {
     pub fn insert_transcript(
         &self,
         episode_id: i64,
-        subtitle_group_id: i32,
+        line_id: i32,
         time_start: &str,
         time_end: &str,
         text: &str,
     ) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO transcripts (episode_id, subtitle_group_id, time_start, time_end, text) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![episode_id, subtitle_group_id, time_start, time_end, text],
-        )?;
+        "INSERT OR IGNORE INTO transcripts (episode_id, line_id, time_start, time_end, text) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![episode_id, line_id, time_start, time_end, text],
+    )?;
         Ok(self.conn.last_insert_rowid())
     }
 
     pub fn batch_insert_shows(&mut self, shows: &[(String, String)]) -> Result<()> {
         println!("Inserting shows...");
-        let sql = "INSERT INTO shows (name, show_type) VALUES (?, ?)";
+        let sql = "INSERT OR IGNORE INTO shows (name, show_type) VALUES (?, ?)";
         let tx = self.conn.transaction()?;
         {
             let mut stmt = tx.prepare(sql)?;
@@ -109,7 +111,7 @@ impl DbHandler {
     pub fn batch_insert_episodes(&mut self, episodes: &[(i64, String, i32, i32)]) -> Result<()> {
         println!("Inserting episodes...");
         let sql =
-            "INSERT INTO episodes (show_id, name, season, episode_number) VALUES (?, ?, ?, ?)";
+        "INSERT OR IGNORE INTO episodes (show_id, name, season, episode_number) VALUES (?, ?, ?, ?)";
         let tx = self.conn.transaction()?;
         {
             let mut stmt = tx.prepare(sql)?;
@@ -125,7 +127,7 @@ impl DbHandler {
         transcripts: &[(i64, i32, String, String, String)],
     ) -> Result<()> {
         println!("Inserting transcripts...");
-        let sql = "INSERT INTO transcripts (episode_id, line_id, time_start, time_end, text) VALUES (?, ?, ?, ?, ?)";
+        let sql = "INSERT OR IGNORE INTO transcripts (episode_id, line_id, time_start, time_end, text) VALUES (?, ?, ?, ?, ?)";
         let tx = self.conn.transaction()?;
         {
             let mut stmt = tx.prepare(sql)?;

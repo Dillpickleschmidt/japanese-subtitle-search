@@ -1,9 +1,9 @@
 /*
 1. Read all transcripts_raw files and add entries to sqlite database transcripts table following example.json
-2. Create a reverse index by extracting all unique words from the transcripts_raw files storing them in a new
+2. Create a parser that tokenizes Japanese text.
+3. Create a reverse index by extracting all unique words from the transcripts_raw files storing them in a new
 table called words. Find the matching show_name, episode_number, and time_start for each word and store the
 found transcript_id belonging to those properties in an additional column in the words table as a foreign key.
-3. Create a parser that tokenizes Japanese text.
 4. Create a search function that uses the parsed text and finds transcript lines that contain all parsed words
 using the reverse index.
   4.1. Get the show_name, season, episode_number, line_id, & transcript_id of the parsed text.
@@ -81,10 +81,10 @@ fn main() -> Result<()> {
                 episode.episode_number as i32,
             ));
 
-            for (index, subtitle) in episode.content.0.iter().enumerate() {
+            for subtitle in episode.content.0.iter() {
                 transcripts.push((
                     episode_id,
-                    (index + 1) as i32,
+                    subtitle.number as i32,
                     subtitle.start_time.to_string(),
                     subtitle.end_time.to_string(),
                     subtitle.text.clone(),
