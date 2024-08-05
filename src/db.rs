@@ -1,5 +1,7 @@
 // Import necessary items from the rusqlite crate and the standard library
-use rusqlite::{params, Batch, Connection, Result};
+use rusqlite::{params, Batch, Connection, Error, Result};
+use std::fs::File;
+use std::io::{BufWriter, Write};
 use std::path::Path;
 
 // Define a public struct called DbHandler that wraps a SQLite connection
@@ -125,16 +127,46 @@ impl DbHandler {
     pub fn batch_insert_transcripts(
         &mut self,
         transcripts: &[(i64, i32, String, String, String)],
+        output_csv: bool,
     ) -> Result<()> {
         println!("Inserting transcripts...");
         let sql = "INSERT OR IGNORE INTO transcripts (episode_id, line_id, time_start, time_end, text) VALUES (?, ?, ?, ?, ?)";
         let tx = self.conn.transaction()?;
+
+        let mut csv_writer = if output_csv {
+            Some(BufWriter::new(
+                File::create("transcripts.csv")
+                    .map_err(|e| Error::InvalidParameterName(e.to_string()))?,
+            ))
+        } else {
+            None
+        };
+
         {
             let mut stmt = tx.prepare(sql)?;
             for (episode_id, line_id, time_start, time_end, text) in transcripts {
-                stmt.execute(params![episode_id, line_id, time_start, time_end, text])?;
+                match stmt.execute(params![episode_id, line_id, time_start, time_end, text]) {
+                    Ok(rows_affected) if rows_affected > 0 => {
+                        let id = tx.last_insert_rowid();
+                        if let Some(writer) = csv_writer.as_mut() {
+                            for line in text.split('\n') {
+                                writeln!(writer, "{},{}", id, line)
+                                    .map_err(|e| Error::InvalidParameterName(e.to_string()))?;
+                            }
+                        }
+                    }
+                    Ok(_) => {}              // Row already exists, skip CSV writing
+                    Err(e) => return Err(e), // Propagate other errors
+                }
             }
         }
+
+        if let Some(mut writer) = csv_writer {
+            writer
+                .flush()
+                .map_err(|e| Error::InvalidParameterName(e.to_string()))?;
+        }
+
         tx.commit()
     }
 }

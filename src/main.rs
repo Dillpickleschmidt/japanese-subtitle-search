@@ -48,8 +48,11 @@ use db::DbHandler;
 use rusqlite::Result;
 use srt_parser::{process_srt_directory, EpisodeNameMethod, EpisodeNumberMethod};
 use std::path::Path;
+use std::time::Instant;
 
 fn main() -> Result<()> {
+    let start_time = Instant::now();
+
     let mut db = DbHandler::new("transcripts.db")?;
     db.create_tables()?;
 
@@ -96,8 +99,13 @@ fn main() -> Result<()> {
     // Perform batch insertions
     db.batch_insert_shows(&shows)?;
     db.batch_insert_episodes(&episodes)?;
-    db.batch_insert_transcripts(&transcripts)?;
 
+    let output_csv = true; // hard-coded for now
+    db.batch_insert_transcripts(&transcripts, output_csv)?;
+
+    let duration = start_time.elapsed();
     println!("All data has been inserted into the database.");
+    println!("Total execution time: {:?}", duration);
+
     Ok(())
 }
